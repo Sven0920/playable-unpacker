@@ -57,7 +57,6 @@
 <body>
 <div class="wrap">
   <h1 class="title">📦 Playable 解包工具</h1>
-  <p class="lead">把从 InsightTracker 下载的 AppLovin 加载器（只有几 KB 的那个 HTML）还原成完整的 Playable 文件。全程在浏览器本地运行，文件不会上传到任何服务器。</p>
 
   <div class="card">
     <div class="step">第一步 · 上传加载器 HTML</div>
@@ -65,7 +64,6 @@
       <input type="file" id="file" accept=".html,.htm" hidden>
       <div class="ico">📂</div>
       <div class="t">点击选择，或把文件拖到这里</div>
-      <div class="s">例如 Block Out!.html（几 KB 的 AppLovin 加载器）</div>
     </label>
     <div class="file" id="fileInfo"><span>已选择：</span><span class="chip" id="fileName"></span></div>
 
@@ -74,10 +72,6 @@
     <div class="log" id="log"></div>
   </div>
 
-  <div class="foot">
-    纯前端工具 · 解包逻辑等同本地 streamlit 版 ·
-    <a href="https://github.com/Sven0920/playable-unpacker" target="_blank">源码</a>
-  </div>
 </div>
 
 <script>
