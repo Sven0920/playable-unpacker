@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Playable 解包工具</title>
+<style>
+  :root{
+    --bg:#f5f5f7; --card:#ffffff; --ink:#1d1d1f; --sub:#6e6e73;
+    --line:#d2d2d7; --accent:#0071e3; --accent-h:#0077ed;
+    --ok:#1d8a44; --err:#d70015; --soft:#f5f5f7;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;min-height:100vh;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",sans-serif;
+    display:flex;align-items:flex-start;justify-content:center;padding:48px 20px;
+  }
+  .wrap{width:100%;max-width:620px}
+  .title{font-size:32px;font-weight:700;letter-spacing:-.02em;margin:0 0 6px}
+  .lead{color:var(--sub);margin:0 0 28px;font-size:15px;line-height:1.5}
+  .card{
+    background:var(--card);border:1px solid var(--line);border-radius:18px;
+    padding:26px;box-shadow:0 1px 2px rgba(0,0,0,.04);
+  }
+  .step{font-size:13px;font-weight:600;color:var(--accent);letter-spacing:.02em;margin-bottom:10px}
+  .drop{
+    border:2px dashed var(--line);border-radius:14px;padding:36px 20px;text-align:center;
+    cursor:pointer;transition:.15s;background:var(--soft);
+  }
+  .drop:hover,.drop.drag{border-color:var(--accent);background:#f0f7ff}
+  .drop .ico{font-size:34px}
+  .drop .t{margin-top:10px;font-weight:600}
+  .drop .s{margin-top:4px;font-size:13px;color:var(--sub)}
+  .file{margin-top:14px;font-size:14px;color:var(--ink);display:none;align-items:center;gap:8px}
+  .file.show{display:flex}
+  .file .chip{background:var(--soft);border:1px solid var(--line);border-radius:8px;padding:4px 10px}
+  button.go{
+    margin-top:18px;width:100%;border:0;border-radius:12px;padding:14px;
+    background:var(--accent);color:#fff;font-size:16px;font-weight:600;cursor:pointer;transition:.15s;
+  }
+  button.go:hover{background:var(--accent-h)}
+  button.go:disabled{background:#b0b0b5;cursor:not-allowed}
+  .log{margin-top:18px;font-size:14px;line-height:1.7}
+  .log .row{padding:8px 12px;border-radius:9px;margin-bottom:6px;background:var(--soft);word-break:break-all}
+  .log .row.ok{background:#eaf7ee;color:var(--ok)}
+  .log .row.err{background:#fdeceb;color:var(--err)}
+  .log code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}
+  a.dl{
+    display:block;margin-top:14px;text-align:center;text-decoration:none;
+    background:var(--ok);color:#fff;border-radius:12px;padding:14px;font-weight:600;font-size:16px;
+  }
+  .foot{margin-top:22px;text-align:center;font-size:12px;color:var(--sub)}
+  .foot a{color:var(--sub)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1 class="title">📦 Playable 解包工具</h1>
+  <p class="lead">把从 InsightTracker 下载的 AppLovin 加载器（只有几 KB 的那个 HTML）还原成完整的 Playable 文件。全程在浏览器本地运行，文件不会上传到任何服务器。</p>
+
+  <div class="card">
+    <div class="step">第一步 · 上传加载器 HTML</div>
+    <label class="drop" id="drop">
+      <input type="file" id="file" accept=".html,.htm" hidden>
+      <div class="ico">📂</div>
+      <div class="t">点击选择，或把文件拖到这里</div>
+      <div class="s">例如 Block Out!.html（几 KB 的 AppLovin 加载器）</div>
+    </label>
+    <div class="file" id="fileInfo"><span>已选择：</span><span class="chip" id="fileName"></span></div>
+
+    <button class="go" id="go" disabled>🚀 开始解包</button>
+
+    <div class="log" id="log"></div>
+  </div>
+
+  <div class="foot">
+    纯前端工具 · 解包逻辑等同本地 streamlit 版 ·
+    <a href="https://github.com/Sven0920/playable-unpacker" target="_blank">源码</a>
+  </div>
+</div>
+
+<script>
+const fileInput = document.getElementById('file');
+const drop = document.getElementById('drop');
+const go = document.getElementById('go');
+const log = document.getElementById('log');
+const fileInfo = document.getElementById('fileInfo');
+const fileName = document.getElementById('fileName');
+let current = null;
+
+function setFile(f){
+  current = f;
+  if(f){ fileName.textContent = f.name; fileInfo.classList.add('show'); go.disabled = false; }
+}
+function logRow(html, cls){
+  const d = document.createElement('div');
+  d.className = 'row' + (cls ? ' ' + cls : '');
+  d.innerHTML = html; log.appendChild(d);
+}
+function reset(){ log.innerHTML=''; }
+
+fileInput.addEventListener('change', e => setFile(e.target.files[0]));
+['dragover','dragenter'].forEach(ev => drop.addEventListener(ev, e=>{e.preventDefault();drop.classList.add('drag');}));
+['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e=>{e.preventDefault();drop.classList.remove('drag');}));
+drop.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if(f) setFile(f); });
+
+// 核心解包逻辑（移植自 unpack_web.py 的 V4 稳定版）
+async function extract(htmlContent){
+  // 1. 找 AppLovin JS 链接
+  const m = htmlContent.match(/src="(https:\/\/res1\.applovin\.com\/.*?_js_load\.js)"/);
+  if(!m) throw new Error('未能在文件中找到 AppLovin JS 下载链接。请确认这是 AppLovin 的加载器 HTML。');
+  const jsUrl = m[1];
+  logRow('🔗 发现目标链接：<code>'+jsUrl+'</code>');
+
+  // 2. 下载游戏数据（AppLovin CDN 允许跨域）
+  logRow('⏳ 正在从 AppLovin 服务器下载游戏数据…');
+  let js;
+  try {
+    const resp = await fetch(jsUrl);
+    if(!resp.ok) throw new Error('HTTP '+resp.status);
+    js = await resp.text();
+  } catch(e){
+    throw new Error('下载失败：'+e.message);
+  }
+
+  // 3a. 策略A：最外层 {} 解析为 JSON，取 html 字段
+  let extracted = null;
+  const start = js.indexOf('{'), end = js.lastIndexOf('}');
+  if(start !== -1 && end !== -1){
+    try {
+      const data = JSON.parse(js.slice(start, end+1));
+      if(data && typeof data.html === 'string') extracted = data.html;
+    } catch(_){}
+  }
+
+  // 3b. 策略B：暴力截取 "html":"…"
+  if(!extracted){
+    const prefix = '"html":"';
+    const p = js.indexOf(prefix);
+    if(p !== -1){
+      const cs = p + prefix.length;
+      const ce = js.lastIndexOf('"');
+      if(ce > cs){
+        const raw = js.slice(cs, ce);
+        try { extracted = JSON.parse('"' + raw + '"'); }
+        catch(_){ extracted = raw; }
+      }
+    }
+  }
+
+  if(!extracted) throw new Error('解析失败：无法从 JS 中提取 HTML 内容。');
+  return extracted;
+}
+
+go.addEventListener('click', async () => {
+  if(!current) return;
+  reset(); go.disabled = true; go.textContent = '解包中…';
+  try {
+    const content = await current.text();
+    const html = await extract(content);
+    const sizeMB = (new Blob([html]).size / (1024*1024)).toFixed(2);
+    logRow('🎉 解包成功！完整包大小 <b>'+sizeMB+' MB</b>', 'ok');
+
+    const blob = new Blob([html], {type:'text/html'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.className = 'dl'; a.href = url;
+    a.download = 'Extracted_' + current.name;
+    a.textContent = '📥 点击下载完整 HTML';
+    log.appendChild(a);
+  } catch(e){
+    logRow('❌ ' + e.message, 'err');
+  } finally {
+    go.disabled = false; go.textContent = '🚀 开始解包';
+  }
+});
+</script>
+</body>
+</html>
